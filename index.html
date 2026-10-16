@@ -79,6 +79,7 @@ nav.tabs button {
   transition: background 0.15s, color 0.15s;
 }
 nav.tabs button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.fixed-tab-panel { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
 
 main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding-bottom: 24px; }
 section[hidden] { display: none !important; }
@@ -188,9 +189,29 @@ form { display: flex; flex-direction: column; gap: 14px; }
     <button class="tab-btn" data-tab="historique">Historique</button>
     <button class="tab-btn" data-tab="articles" id="articlesTabBtn">Articles</button>
   </nav>
-  <div class="searchbar" id="stockSearchbar">
-    <input type="search" id="searchInput" placeholder="Rechercher un article…">
-    <select id="categoryFilter"><option value="">Toutes catégories</option></select>
+
+  <div class="fixed-tab-panel" id="fixedPanel-stock">
+    <div class="tiles" id="summaryTiles"></div>
+    <div id="alertBanner"></div>
+    <div class="searchbar" id="stockSearchbar">
+      <input type="search" id="searchInput" placeholder="Rechercher un article…">
+      <select id="categoryFilter"><option value="">Toutes catégories</option></select>
+    </div>
+  </div>
+
+  <div class="fixed-tab-panel" id="fixedPanel-historique" hidden>
+    <div class="searchbar">
+      <select id="historyFilter" style="max-width:none; flex:1;">
+        <option value="">Tous les mouvements</option>
+        <option value="vente">Ventes</option>
+        <option value="reassort">Réassorts</option>
+        <option value="perte">Casse / Perte</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="fixed-tab-panel" id="fixedPanel-articles" hidden>
+    <button class="btn btn-ghost btn-block" id="addArticleBtn">+ Ajouter un article</button>
   </div>
 </div>
 
@@ -209,25 +230,14 @@ form { display: flex; flex-direction: column; gap: 14px; }
 
 <main id="app" hidden>
   <section id="tab-stock">
-    <div class="tiles" id="summaryTiles"></div>
-    <div id="alertBanner"></div>
     <div class="article-list" id="articleList"></div>
   </section>
 
   <section id="tab-historique" hidden>
-    <div class="searchbar">
-      <select id="historyFilter" style="max-width:none; flex:1;">
-        <option value="">Tous les mouvements</option>
-        <option value="vente">Ventes</option>
-        <option value="reassort">Réassorts</option>
-        <option value="perte">Casse / Perte</option>
-      </select>
-    </div>
     <div class="history-list" id="historyList"></div>
   </section>
 
   <section id="tab-articles" hidden>
-    <button class="btn btn-ghost btn-block" id="addArticleBtn">+ Ajouter un article</button>
     <div class="article-list" id="articlesManageList"></div>
   </section>
 </main>
@@ -305,9 +315,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     currentTab = btn.dataset.tab;
     ['stock', 'historique', 'articles'].forEach(t => {
       document.getElementById('tab-' + t).hidden = (t !== currentTab);
+      document.getElementById('fixedPanel-' + t).hidden = (t !== currentTab);
     });
     document.getElementById('fabMove').hidden = (currentTab !== 'stock');
-    document.getElementById('stockSearchbar').hidden = (currentTab !== 'stock');
   });
 });
 
@@ -440,7 +450,9 @@ function applyRoleToUI() {
     document.getElementById('tab-stock').hidden = false;
     document.getElementById('tab-historique').hidden = true;
     document.getElementById('tab-articles').hidden = true;
-    document.getElementById('stockSearchbar').hidden = false;
+    document.getElementById('fixedPanel-stock').hidden = false;
+    document.getElementById('fixedPanel-historique').hidden = true;
+    document.getElementById('fixedPanel-articles').hidden = true;
   }
   const label = gerant ? 'Gérant' : 'Vendeur';
   const cls = gerant ? 'gerant' : 'vendeur';
@@ -674,7 +686,9 @@ function showLogin() {
   document.getElementById('whoDot').classList.add('off');
   document.getElementById('logoutBtn').hidden = true;
   document.querySelector('.app-fixed-top nav.tabs').hidden = true;
-  document.getElementById('stockSearchbar').hidden = true;
+  document.getElementById('fixedPanel-stock').hidden = true;
+  document.getElementById('fixedPanel-historique').hidden = true;
+  document.getElementById('fixedPanel-articles').hidden = true;
   document.getElementById('fixedTop').hidden = false;
 }
 
@@ -683,7 +697,9 @@ function showApp() {
   document.getElementById('app').hidden = false;
   document.getElementById('logoutBtn').hidden = false;
   document.querySelector('.app-fixed-top nav.tabs').hidden = false;
-  document.getElementById('stockSearchbar').hidden = (currentTab !== 'stock');
+  ['stock', 'historique', 'articles'].forEach(t => {
+    document.getElementById('fixedPanel-' + t).hidden = (t !== currentTab);
+  });
   document.getElementById('fixedTop').hidden = false;
 }
 
