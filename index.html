@@ -60,13 +60,19 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text
 button { font: inherit; }
 img { max-width: 100%; }
 
+.app-fixed-top {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg);
+  margin-inline: -16px; padding-inline: 16px;
+  padding-top: env(safe-area-inset-top, 0px);
+}
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px 14px; }
 .brand h1 { font-size: 1.3rem; }
-.who { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-dim); }
+.who { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--ink-dim); }
 .who .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); flex: none; }
 .who .dot.off { background: var(--bad); }
 
-nav.tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-sunken); border-radius: 12px; margin-bottom: 16px; }
+nav.tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-sunken); border-radius: 12px; margin-bottom: 12px; }
 nav.tabs button {
   flex: 1; border: none; background: transparent; color: var(--ink-dim);
   padding: 9px 4px; border-radius: 9px; font-size: 0.84rem; font-weight: 600; cursor: pointer;
@@ -77,6 +83,7 @@ nav.tabs button.active { background: var(--surface); color: var(--ink); box-shad
 main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding-bottom: 24px; }
 section[hidden] { display: none !important; }
 [hidden] { display: none !important; }
+.logout-link-top { background: none; border: 1px solid var(--border); color: var(--ink-dim); font-size: 0.72rem; cursor: pointer; padding: 4px 9px; border-radius: 8px; }
 
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -167,11 +174,23 @@ form { display: flex; flex-direction: column; gap: 14px; }
 </head>
 <body>
 
-<div class="topbar">
-  <div class="brand"><h1>Boutique Stock</h1></div>
-  <div class="who" id="whoBox">
-    <span class="dot off" id="whoDot"></span>
-    <span id="whoLabel">Connexion…</span>
+<div class="app-fixed-top" id="fixedTop" hidden>
+  <div class="topbar">
+    <div class="brand"><h1>Boutique Stock</h1></div>
+    <div class="who" id="whoBox">
+      <span class="dot off" id="whoDot"></span>
+      <span id="whoLabel">Connexion…</span>
+      <button class="logout-link-top" id="logoutBtn" hidden>Se déconnecter</button>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="stock">Stock</button>
+    <button class="tab-btn" data-tab="historique">Historique</button>
+    <button class="tab-btn" data-tab="articles" id="articlesTabBtn">Articles</button>
+  </nav>
+  <div class="searchbar" id="stockSearchbar">
+    <input type="search" id="searchInput" placeholder="Rechercher un article…">
+    <select id="categoryFilter"><option value="">Toutes catégories</option></select>
   </div>
 </div>
 
@@ -189,19 +208,9 @@ form { display: flex; flex-direction: column; gap: 14px; }
 </div>
 
 <main id="app" hidden>
-  <nav class="tabs">
-    <button class="tab-btn active" data-tab="stock">Stock</button>
-    <button class="tab-btn" data-tab="historique">Historique</button>
-    <button class="tab-btn" data-tab="articles" id="articlesTabBtn">Articles</button>
-  </nav>
-
   <section id="tab-stock">
     <div class="tiles" id="summaryTiles"></div>
     <div id="alertBanner"></div>
-    <div class="searchbar">
-      <input type="search" id="searchInput" placeholder="Rechercher un article…">
-      <select id="categoryFilter"><option value="">Toutes catégories</option></select>
-    </div>
     <div class="article-list" id="articleList"></div>
   </section>
 
@@ -221,8 +230,6 @@ form { display: flex; flex-direction: column; gap: 14px; }
     <button class="btn btn-ghost btn-block" id="addArticleBtn">+ Ajouter un article</button>
     <div class="article-list" id="articlesManageList"></div>
   </section>
-
-  <button class="logout-link" id="logoutBtn" style="align-self:center; margin-top:8px;">Se déconnecter</button>
 </main>
 
 <button class="fab" id="fabMove" title="Enregistrer un mouvement" hidden>+</button>
@@ -300,6 +307,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       document.getElementById('tab-' + t).hidden = (t !== currentTab);
     });
     document.getElementById('fabMove').hidden = (currentTab !== 'stock');
+    document.getElementById('stockSearchbar').hidden = (currentTab !== 'stock');
   });
 });
 
@@ -432,6 +440,7 @@ function applyRoleToUI() {
     document.getElementById('tab-stock').hidden = false;
     document.getElementById('tab-historique').hidden = true;
     document.getElementById('tab-articles').hidden = true;
+    document.getElementById('stockSearchbar').hidden = false;
   }
   const label = gerant ? 'Gérant' : 'Vendeur';
   const cls = gerant ? 'gerant' : 'vendeur';
@@ -663,11 +672,19 @@ function showLogin() {
   document.getElementById('fabMove').hidden = true;
   document.getElementById('whoLabel').textContent = 'Non connecté';
   document.getElementById('whoDot').classList.add('off');
+  document.getElementById('logoutBtn').hidden = true;
+  document.querySelector('.app-fixed-top nav.tabs').hidden = true;
+  document.getElementById('stockSearchbar').hidden = true;
+  document.getElementById('fixedTop').hidden = false;
 }
 
 function showApp() {
   document.getElementById('loginScreen').hidden = true;
   document.getElementById('app').hidden = false;
+  document.getElementById('logoutBtn').hidden = false;
+  document.querySelector('.app-fixed-top nav.tabs').hidden = false;
+  document.getElementById('stockSearchbar').hidden = (currentTab !== 'stock');
+  document.getElementById('fixedTop').hidden = false;
 }
 
 async function loadProfileAndEnter(userId) {
