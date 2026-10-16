@@ -151,6 +151,17 @@ form { display: flex; flex-direction: column; gap: 14px; }
 .history-row .amount.pos { color: var(--good); }
 
 .toast { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; z-index: 50; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+
+.role-badge { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+.role-badge.gerant { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent); }
+.role-badge.vendeur { background: var(--good-bg); color: var(--good); }
+
+.login-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding-block: 24px; }
+.login-card { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 14px; }
+.login-card h1 { font-size: 1.5rem; text-align: center; }
+.login-card .subtitle { text-align: center; color: var(--ink-dim); font-size: 0.85rem; margin-top: -8px; }
+.login-error { color: var(--bad); font-size: 0.82rem; min-height: 1.2em; text-align: center; }
+.logout-link { background: none; border: none; color: var(--ink-dim); font-size: 0.78rem; cursor: pointer; padding: 4px; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -163,11 +174,24 @@ form { display: flex; flex-direction: column; gap: 14px; }
   </div>
 </div>
 
-<main id="app">
+<div id="loginScreen" class="login-screen" hidden>
+  <div class="login-card">
+    <h1>Connexion</h1>
+    <p class="subtitle">Accédez au stock de la boutique</p>
+    <form id="loginForm">
+      <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" required autocomplete="username"></div>
+      <div class="field" style="margin-top:10px"><label for="loginPassword">Mot de passe</label><input id="loginPassword" type="password" required autocomplete="current-password"></div>
+      <button type="submit" class="btn btn-primary btn-block" style="margin-top:14px" id="loginSubmitBtn">Se connecter</button>
+      <p class="login-error" id="loginError"></p>
+    </form>
+  </div>
+</div>
+
+<main id="app" hidden>
   <nav class="tabs">
     <button class="tab-btn active" data-tab="stock">Stock</button>
     <button class="tab-btn" data-tab="historique">Historique</button>
-    <button class="tab-btn" data-tab="articles">Articles</button>
+    <button class="tab-btn" data-tab="articles" id="articlesTabBtn">Articles</button>
   </nav>
 
   <section id="tab-stock">
@@ -192,13 +216,15 @@ form { display: flex; flex-direction: column; gap: 14px; }
     <div class="history-list" id="historyList"></div>
   </section>
 
-  <section id="tab-articles">
+  <section id="tab-articles" hidden>
     <button class="btn btn-ghost btn-block" id="addArticleBtn">+ Ajouter un article</button>
     <div class="article-list" id="articlesManageList"></div>
   </section>
+
+  <button class="logout-link" id="logoutBtn" style="align-self:center; margin-top:8px;">Se déconnecter</button>
 </main>
 
-<button class="fab" id="fabMove" title="Enregistrer un mouvement">+</button>
+<button class="fab" id="fabMove" title="Enregistrer un mouvement" hidden>+</button>
 <div id="toastHost"></div>
 
 <!-- Config locale (vos clés Supabase) -->
@@ -230,6 +256,13 @@ function timeAgo(ts) {
 let articles = {};   // id -> {name, category, qty, buy_price, sell_price, threshold}
 let movements = [];  // [{id, article_id, type, qty, by_name, at}]
 let currentTab = 'stock';
+let currentProfile = null; // {role, display_name, email}
+let articlesChannel = null;
+let movementsChannel = null;
+
+function isGerant() {
+  return currentProfile && currentProfile.role === 'gerant';
+}
 
 function toast(msg) {
   const host = document.getElementById('toastHost');
@@ -388,6 +421,22 @@ function renderAll() {
   renderArticlesManage();
 }
 
+function applyRoleToUI() {
+  const gerant = isGerant();
+  document.getElementById('articlesTabBtn').hidden = !gerant;
+  // Si le vendeur était sur l'onglet Articles au moment où le rôle se charge, on le ramène sur Stock
+  if (!gerant && currentTab === 'articles') {
+    currentTab = 'stock';
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'stock'));
+    document.getElementById('tab-stock').hidden = false;
+    document.getElementById('tab-historique').hidden = true;
+    document.getElementById('tab-articles').hidden = true;
+  }
+  const label = gerant ? 'Gérant' : 'Vendeur';
+  const cls = gerant ? 'gerant' : 'vendeur';
+  document.getElementById('whoLabel').innerHTML = `${escapeHtml(currentProfile.display_name || currentProfile.email)} <span class="role-badge ${cls}">${label}</span>`;
+}
+
 // ---------------------------------------------------------------------------
 // Movement sheet
 // ---------------------------------------------------------------------------
@@ -401,6 +450,7 @@ function openMoveSheet(preselectId) {
     .map(([id, a]) => `<option value="${id}" ${id === preselectId ? 'selected' : ''}>${escapeHtml(a.name)} (${a.qty ?? 0} en stock)</option>`)
     .join('');
 
+  const gerant = isGerant();
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
   backdrop.innerHTML = `
@@ -409,7 +459,7 @@ function openMoveSheet(preselectId) {
       <form id="moveForm">
         <div class="move-type-row">
           <button type="button" class="move-type-btn active" data-type="vente">Vente</button>
-          <button type="button" class="move-type-btn" data-type="reassort">Réassort</button>
+          ${gerant ? '<button type="button" class="move-type-btn" data-type="reassort">Réassort</button>' : ''}
           <button type="button" class="move-type-btn" data-type="perte">Casse/Perte</button>
         </div>
         <div class="field">
@@ -493,6 +543,10 @@ document.getElementById('fabMove').addEventListener('click', () => openMoveSheet
 // Article create/edit sheet
 // ---------------------------------------------------------------------------
 function openArticleSheet(id) {
+  if (!isGerant()) {
+    toast("Seul le gérant peut gérer les articles.");
+    return;
+  }
   const existing = id ? articles[id] : null;
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
@@ -569,20 +623,14 @@ document.getElementById('historyFilter').addEventListener('change', renderHistor
 // Data layer: Supabase
 // ---------------------------------------------------------------------------
 async function recordMovement(articleId, type, qty) {
-  const a = articles[articleId];
-  const delta = type === 'reassort' ? qty : -qty;
-  const newQty = Math.max(0, (a.qty ?? 0) + delta);
-
-  const { error: updErr } = await supa.from('articles').update({ qty: newQty }).eq('id', articleId);
-  if (updErr) throw updErr;
-
-  const { error: movErr } = await supa.from('movements').insert({
-    article_id: articleId,
-    type,
-    qty,
-    by_name: localStorage.getItem('stock_username') || 'Boutique',
+  // Passe par la fonction sécurisée côté serveur : elle revérifie le rôle,
+  // met à jour le stock et insère le mouvement de façon atomique.
+  const { error } = await supa.rpc('record_movement', {
+    p_article_id: articleId,
+    p_type: type,
+    p_qty: qty,
   });
-  if (movErr) throw movErr;
+  if (error) throw error;
 }
 
 async function loadArticles() {
@@ -605,29 +653,91 @@ async function loadMovements() {
   renderAll();
 }
 
-function start() {
-  // Demande un petit pseudo une seule fois, pour savoir "qui" fait un mouvement
-  if (!localStorage.getItem('stock_username')) {
-    const name = prompt("Votre prénom (pour la traçabilité des mouvements) :", "");
-    if (name) localStorage.setItem('stock_username', name.trim());
-  }
+// ---------------------------------------------------------------------------
+// Authentification
+// ---------------------------------------------------------------------------
+function showLogin() {
+  document.getElementById('loginScreen').hidden = false;
+  document.getElementById('app').hidden = true;
+  document.getElementById('fabMove').hidden = true;
+  document.getElementById('whoLabel').textContent = 'Non connecté';
+  document.getElementById('whoDot').classList.add('off');
+}
 
+function showApp() {
+  document.getElementById('loginScreen').hidden = true;
+  document.getElementById('app').hidden = false;
+}
+
+async function loadProfileAndEnter(userId) {
+  const { data, error } = await supa.from('profiles').select('*').eq('id', userId).single();
+  if (error || !data) {
+    console.error(error);
+    document.getElementById('loginError').textContent = "Votre compte n'a pas de profil associé. Contactez le gérant.";
+    await supa.auth.signOut();
+    showLogin();
+    return;
+  }
+  currentProfile = data;
+  showApp();
+  document.getElementById('whoDot').classList.remove('off');
+  applyRoleToUI();
+  document.getElementById('fabMove').hidden = (currentTab !== 'stock');
+  subscribeRealtime();
   loadArticles();
   loadMovements();
+}
 
-  // Abonnements temps réel : toute modification faite par n'importe qui
-  // (vous ou le vendeur) rafraîchit automatiquement la page de l'autre.
-  supa.channel('public:articles')
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginSubmitBtn');
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    const { data, error } = await supa.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    await loadProfileAndEnter(data.user.id);
+  } catch (err) {
+    console.error(err);
+    errEl.textContent = 'Email ou mot de passe incorrect.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  unsubscribeRealtime();
+  await supa.auth.signOut();
+  currentProfile = null;
+  articles = {};
+  movements = [];
+  showLogin();
+});
+
+function subscribeRealtime() {
+  if (articlesChannel) return; // déjà abonné
+  articlesChannel = supa.channel('public:articles')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'articles' }, loadArticles)
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        document.getElementById('whoDot').classList.remove('off');
-        document.getElementById('whoLabel').textContent = 'En ligne';
-      }
-    });
-  supa.channel('public:movements')
+    .subscribe();
+  movementsChannel = supa.channel('public:movements')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'movements' }, loadMovements)
     .subscribe();
+}
+
+function unsubscribeRealtime() {
+  if (articlesChannel) { supa.removeChannel(articlesChannel); articlesChannel = null; }
+  if (movementsChannel) { supa.removeChannel(movementsChannel); movementsChannel = null; }
+}
+
+async function start() {
+  showLogin(); // état par défaut pendant qu'on vérifie la session
+  const { data } = await supa.auth.getSession();
+  if (data.session) {
+    await loadProfileAndEnter(data.session.user.id);
+  }
 }
 
 start();
