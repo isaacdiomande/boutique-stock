@@ -86,7 +86,7 @@ section[hidden] { display: none !important; }
 [hidden] { display: none !important; }
 .logout-link-top { background: none; border: 1px solid var(--border); color: var(--ink-dim); font-size: 0.72rem; cursor: pointer; padding: 4px 9px; border-radius: 8px; }
 
-.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tiles { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tile .label { font-size: 0.68rem; color: var(--ink-dim); letter-spacing: 0.02em; text-transform: uppercase; }
 .tile .value { font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -332,10 +332,11 @@ function renderSummary() {
   const lowStock = list.filter(([, a]) => (a.qty || 0) <= (a.threshold ?? 3) && (a.qty || 0) > 0);
   const outStock = list.filter(([, a]) => (a.qty || 0) <= 0);
 
+  const gerant = isGerant();
   document.getElementById('summaryTiles').innerHTML = `
     <div class="tile"><div class="label">Références</div><div class="value">${totalRefs}</div></div>
     <div class="tile"><div class="label">Unités en stock</div><div class="value">${totalUnits}</div></div>
-    <div class="tile"><div class="label">Valeur stock</div><div class="value small">${fmtFCFA(stockValue)}</div></div>
+    ${gerant ? `<div class="tile"><div class="label">Valeur stock</div><div class="value small">${fmtFCFA(stockValue)}</div></div>` : ''}
   `;
   const alertCount = lowStock.length + outStock.length;
   document.getElementById('alertBanner').innerHTML = alertCount > 0
