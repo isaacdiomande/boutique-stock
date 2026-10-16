@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Boutique Stock</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #f6f4f0;
+  --surface: #ffffff;
+  --surface-sunken: #efece5;
+  --border: #e0dcd3;
+  --ink: #1f1b16;
+  --ink-dim: #6b6358;
+  --accent: #b5542c;
+  --accent-ink: #ffffff;
+  --good: #2f7a4f;
+  --good-bg: #e7f2ea;
+  --warn: #a8651a;
+  --warn-bg: #faf0e2;
+  --bad: #b23b3b;
+  --bad-bg: #fbeaea;
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171411; --surface: #221e19; --surface-sunken: #1b1815; --border: #35302a;
+    --ink: #f3efe8; --ink-dim: #a69c8d; --accent: #e08a5b; --accent-ink: #1a1310;
+    --good: #6fbf8c; --good-bg: #1c2a20; --warn: #e0a858; --warn-bg: #2e2415;
+    --bad: #e2807f; --bad-bg: #2e1c1b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171411; --surface: #221e19; --surface-sunken: #1b1815; --border: #35302a;
+  --ink: #f3efe8; --ink-dim: #a69c8d; --accent: #e08a5b; --accent-ink: #1a1310;
+  --good: #6fbf8c; --good-bg: #1c2a20; --warn: #e0a858; --warn-bg: #2e2415;
+  --bad: #e2807f; --bad-bg: #2e1c1b; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.45;
+  padding-inline: 16px;
+  padding-block: calc(12px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; }
+button { font: inherit; }
+img { max-width: 100%; }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px 14px; }
+.brand h1 { font-size: 1.3rem; }
+.who { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-dim); }
+.who .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); flex: none; }
+.who .dot.off { background: var(--bad); }
+
+nav.tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-sunken); border-radius: 12px; margin-bottom: 16px; }
+nav.tabs button {
+  flex: 1; border: none; background: transparent; color: var(--ink-dim);
+  padding: 9px 4px; border-radius: 9px; font-size: 0.84rem; font-weight: 600; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+nav.tabs button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+
+main { flex: 1; display: flex; flex-direction: column; gap: 16px; padding-bottom: 24px; }
+section[hidden] { display: none !important; }
+
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile .label { font-size: 0.68rem; color: var(--ink-dim); letter-spacing: 0.02em; text-transform: uppercase; }
+.tile .value { font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.tile .value.small { font-size: 0.95rem; }
+
+.alert-banner { display: flex; align-items: center; gap: 8px; background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 9px 12px; font-size: 0.82rem; font-weight: 600; }
+
+.searchbar { display: flex; gap: 8px; }
+.searchbar input[type="search"] { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 9px 12px; font-size: 0.9rem; }
+.searchbar select { border: 1px solid var(--border); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 9px 8px; font-size: 0.85rem; max-width: 40%; }
+
+.article-list { display: flex; flex-direction: column; gap: 8px; }
+.article-row { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.article-row .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.article-row .name { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.article-row .meta { font-size: 0.75rem; color: var(--ink-dim); }
+.article-row .qty { flex: none; text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1rem; min-width: 44px; }
+.article-row .qty .unit { font-size: 0.65rem; font-weight: 500; color: var(--ink-dim); display: block; font-family: var(--font-body); }
+.stock-pill { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.stock-pill.ok { background: var(--good); }
+.stock-pill.low { background: var(--warn); }
+.stock-pill.out { background: var(--bad); }
+
+.empty-state { text-align: center; color: var(--ink-dim); padding: 32px 16px; font-size: 0.88rem; }
+
+.btn { border: none; border-radius: 10px; padding: 11px 16px; font-weight: 600; font-size: 0.9rem; cursor: pointer; text-align: center; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-ghost { background: var(--surface-sunken); color: var(--ink); }
+.btn-block { width: 100%; }
+.btn[disabled] { opacity: 0.5; cursor: default; }
+.fab {
+  position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+  border: none; font-size: 1.5rem; line-height: 1; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+
+.move-type-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.move-type-btn { border: 1.5px solid var(--border); background: var(--surface); color: var(--ink-dim); border-radius: 10px; padding: 11px 6px; font-size: 0.82rem; font-weight: 700; cursor: pointer; text-align: center; }
+.move-type-btn.active[data-type="vente"] { border-color: var(--good); color: var(--good); background: var(--good-bg); }
+.move-type-btn.active[data-type="reassort"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.move-type-btn.active[data-type="perte"] { border-color: var(--bad); color: var(--bad); background: var(--bad-bg); }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 0.76rem; font-weight: 600; color: var(--ink-dim); }
+.field select, .field input { border: 1px solid var(--border); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 10px 12px; font-size: 0.95rem; width: 100%; }
+.qty-stepper { display: flex; align-items: center; gap: 10px; }
+.qty-stepper button { width: 42px; height: 42px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-sunken); color: var(--ink); font-size: 1.2rem; cursor: pointer; flex: none; }
+.qty-stepper input { text-align: center; font-family: var(--font-mono); font-weight: 700; font-size: 1.1rem; }
+.current-stock-hint { font-size: 0.78rem; color: var(--ink-dim); }
+.current-stock-hint strong { color: var(--ink); }
+
+form { display: flex; flex-direction: column; gap: 14px; }
+.sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: flex-end; z-index: 30; }
+.sheet { background: var(--bg); width: 100%; max-height: 88vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.sheet-head h2 { font-size: 1.05rem; }
+.sheet-close { background: none; border: none; color: var(--ink-dim); font-size: 1.3rem; cursor: pointer; padding: 4px 8px; }
+
+.history-list { display: flex; flex-direction: column; gap: 6px; }
+.history-row { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+.history-row .kind { flex: none; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 700; }
+.history-row .kind.vente { background: var(--good-bg); color: var(--good); }
+.history-row .kind.reassort { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); }
+.history-row .kind.perte { background: var(--bad-bg); color: var(--bad); }
+.history-row .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.history-row .info .line1 { font-size: 0.86rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-row .info .line2 { font-size: 0.72rem; color: var(--ink-dim); }
+.history-row .amount { flex: none; font-family: var(--font-mono); font-weight: 700; font-size: 0.88rem; }
+.history-row .amount.neg { color: var(--bad); }
+.history-row .amount.pos { color: var(--good); }
+
+.toast { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; z-index: 50; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><h1>Boutique Stock</h1></div>
+  <div class="who" id="whoBox">
+    <span class="dot off" id="whoDot"></span>
+    <span id="whoLabel">Connexion…</span>
+  </div>
+</div>
+
+<main id="app">
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="stock">Stock</button>
+    <button class="tab-btn" data-tab="historique">Historique</button>
+    <button class="tab-btn" data-tab="articles">Articles</button>
+  </nav>
+
+  <section id="tab-stock">
+    <div class="tiles" id="summaryTiles"></div>
+    <div id="alertBanner"></div>
+    <div class="searchbar">
+      <input type="search" id="searchInput" placeholder="Rechercher un article…">
+      <select id="categoryFilter"><option value="">Toutes catégories</option></select>
+    </div>
+    <div class="article-list" id="articleList"></div>
+  </section>
+
+  <section id="tab-historique" hidden>
+    <div class="searchbar">
+      <select id="historyFilter" style="max-width:none; flex:1;">
+        <option value="">Tous les mouvements</option>
+        <option value="vente">Ventes</option>
+        <option value="reassort">Réassorts</option>
+        <option value="perte">Casse / Perte</option>
+      </select>
+    </div>
+    <div class="history-list" id="historyList"></div>
+  </section>
+
+  <section id="tab-articles">
+    <button class="btn btn-ghost btn-block" id="addArticleBtn">+ Ajouter un article</button>
+    <div class="article-list" id="articlesManageList"></div>
+  </section>
+</main>
+
+<button class="fab" id="fabMove" title="Enregistrer un mouvement">+</button>
+<div id="toastHost"></div>
+
+<!-- Config locale (vos clés Supabase) -->
+<script src="config.js"></script>
+<!-- SDK Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// ============================================================================
+// Connexion Supabase
+// ============================================================================
+const supa = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diffSec < 60) return "à l'instant";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `il y a ${diffH} h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 30) return `il y a ${diffD} j`;
+  return new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let articles = {};   // id -> {name, category, qty, buy_price, sell_price, threshold}
+let movements = [];  // [{id, article_id, type, qty, by_name, at}]
+let currentTab = 'stock';
+
+function toast(msg) {
+  const host = document.getElementById('toastHost');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  host.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+function fmtFCFA(n) {
+  if (n == null || isNaN(n)) return '—';
+  return Math.round(n).toLocaleString('fr-FR') + ' F';
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function stockLevel(a) {
+  const qty = a.qty || 0;
+  const th = a.threshold ?? 3;
+  if (qty <= 0) return 'out';
+  if (qty <= th) return 'low';
+  return 'ok';
+}
+
+// ---------------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------------
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTab = btn.dataset.tab;
+    ['stock', 'historique', 'articles'].forEach(t => {
+      document.getElementById('tab-' + t).hidden = (t !== currentTab);
+    });
+    document.getElementById('fabMove').hidden = (currentTab !== 'stock');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+function renderSummary() {
+  const list = Object.entries(articles);
+  const totalRefs = list.length;
+  const totalUnits = list.reduce((s, [, a]) => s + (a.qty || 0), 0);
+  const stockValue = list.reduce((s, [, a]) => s + (a.qty || 0) * (a.buy_price || 0), 0);
+  const lowStock = list.filter(([, a]) => (a.qty || 0) <= (a.threshold ?? 3) && (a.qty || 0) > 0);
+  const outStock = list.filter(([, a]) => (a.qty || 0) <= 0);
+
+  document.getElementById('summaryTiles').innerHTML = `
+    <div class="tile"><div class="label">Références</div><div class="value">${totalRefs}</div></div>
+    <div class="tile"><div class="label">Unités en stock</div><div class="value">${totalUnits}</div></div>
+    <div class="tile"><div class="label">Valeur stock</div><div class="value small">${fmtFCFA(stockValue)}</div></div>
+  `;
+  const alertCount = lowStock.length + outStock.length;
+  document.getElementById('alertBanner').innerHTML = alertCount > 0
+    ? `<div class="alert-banner">⚠ ${outStock.length} article(s) épuisé(s), ${lowStock.length} en stock bas</div>`
+    : '';
+}
+
+function populateCategoryFilter() {
+  const sel = document.getElementById('categoryFilter');
+  const cats = [...new Set(Object.values(articles).map(a => a.category).filter(Boolean))].sort();
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Toutes catégories</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  sel.value = current;
+}
+
+function renderArticleList() {
+  const search = document.getElementById('searchInput').value.trim().toLowerCase();
+  const cat = document.getElementById('categoryFilter').value;
+  const list = Object.entries(articles)
+    .filter(([, a]) => !search || a.name.toLowerCase().includes(search))
+    .filter(([, a]) => !cat || a.category === cat)
+    .sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'));
+
+  const host = document.getElementById('articleList');
+  if (list.length === 0) {
+    host.innerHTML = `<div class="empty-state">${Object.keys(articles).length === 0 ? "Aucun article pour l'instant. Ajoutez-en dans l'onglet Articles." : "Aucun résultat."}</div>`;
+    return;
+  }
+  host.innerHTML = list.map(([id, a]) => `
+    <div class="article-row" data-id="${id}">
+      <span class="stock-pill ${stockLevel(a)}"></span>
+      <div class="info">
+        <div class="name">${escapeHtml(a.name)}</div>
+        <div class="meta">${escapeHtml(a.category || 'Sans catégorie')} · ${fmtFCFA(a.sell_price)}</div>
+      </div>
+      <div class="qty">${a.qty ?? 0}<span class="unit">unités</span></div>
+    </div>
+  `).join('');
+  host.querySelectorAll('.article-row').forEach(row => {
+    row.addEventListener('click', () => openMoveSheet(row.dataset.id));
+  });
+}
+
+function renderHistory() {
+  const filter = document.getElementById('historyFilter').value;
+  const list = movements.filter(m => !filter || m.type === filter).slice(0, 100);
+
+  const host = document.getElementById('historyList');
+  if (list.length === 0) {
+    host.innerHTML = `<div class="empty-state">Aucun mouvement enregistré.</div>`;
+    return;
+  }
+  const kindLabel = { vente: 'V', reassort: 'R', perte: 'P' };
+  const kindWord = { vente: 'Vente', reassort: 'Réassort', perte: 'Casse/Perte' };
+  host.innerHTML = list.map(m => {
+    const art = articles[m.article_id];
+    const name = art ? art.name : '(article supprimé)';
+    const sign = m.type === 'reassort' ? '+' : '−';
+    const cls = m.type === 'reassort' ? 'pos' : 'neg';
+    const when = m.at ? timeAgo(new Date(m.at).getTime()) : '';
+    return `
+      <div class="history-row">
+        <div class="kind ${m.type}">${kindLabel[m.type] || '?'}</div>
+        <div class="info">
+          <div class="line1">${escapeHtml(name)}</div>
+          <div class="line2">${kindWord[m.type] || m.type} · ${escapeHtml(m.by_name || 'inconnu')} · ${when}</div>
+        </div>
+        <div class="amount ${cls}">${sign}${m.qty}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderArticlesManage() {
+  const host = document.getElementById('articlesManageList');
+  const list = Object.entries(articles).sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'));
+  if (list.length === 0) {
+    host.innerHTML = `<div class="empty-state">Aucun article. Ajoutez le premier ci-dessus.</div>`;
+    return;
+  }
+  host.innerHTML = list.map(([id, a]) => {
+    const margin = (a.sell_price || 0) - (a.buy_price || 0);
+    return `
+    <div class="article-row" data-id="${id}">
+      <div class="info">
+        <div class="name">${escapeHtml(a.name)}</div>
+        <div class="meta">${escapeHtml(a.category || 'Sans catégorie')} · Achat ${fmtFCFA(a.buy_price)} · Vente ${fmtFCFA(a.sell_price)} · Marge ${fmtFCFA(margin)}</div>
+      </div>
+      <div class="qty">${a.qty ?? 0}<span class="unit">unités</span></div>
+    </div>`;
+  }).join('');
+  host.querySelectorAll('.article-row').forEach(row => {
+    row.addEventListener('click', () => openArticleSheet(row.dataset.id));
+  });
+}
+
+function renderAll() {
+  populateCategoryFilter();
+  renderSummary();
+  renderArticleList();
+  renderHistory();
+  renderArticlesManage();
+}
+
+// ---------------------------------------------------------------------------
+// Movement sheet
+// ---------------------------------------------------------------------------
+function openMoveSheet(preselectId) {
+  if (Object.keys(articles).length === 0) {
+    toast("Ajoutez d'abord un article dans l'onglet Articles.");
+    return;
+  }
+  const options = Object.entries(articles)
+    .sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr'))
+    .map(([id, a]) => `<option value="${id}" ${id === preselectId ? 'selected' : ''}>${escapeHtml(a.name)} (${a.qty ?? 0} en stock)</option>`)
+    .join('');
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-head"><h2>Nouveau mouvement</h2><button class="sheet-close" id="closeMoveSheet">✕</button></div>
+      <form id="moveForm">
+        <div class="move-type-row">
+          <button type="button" class="move-type-btn active" data-type="vente">Vente</button>
+          <button type="button" class="move-type-btn" data-type="reassort">Réassort</button>
+          <button type="button" class="move-type-btn" data-type="perte">Casse/Perte</button>
+        </div>
+        <div class="field">
+          <label for="moveArticle">Article</label>
+          <select id="moveArticle" required>${options}</select>
+        </div>
+        <div class="field">
+          <label>Quantité</label>
+          <div class="qty-stepper">
+            <button type="button" id="qtyMinus">−</button>
+            <input type="number" id="moveQty" value="1" min="1" inputmode="numeric">
+            <button type="button" id="qtyPlus">+</button>
+          </div>
+          <div class="current-stock-hint" id="stockHint"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="moveSubmitBtn">Enregistrer la vente</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+  document.getElementById('closeMoveSheet').addEventListener('click', () => backdrop.remove());
+
+  let activeType = 'vente';
+  const typeBtns = backdrop.querySelectorAll('.move-type-btn');
+  const submitBtn = document.getElementById('moveSubmitBtn');
+  const verbByType = { vente: 'Enregistrer la vente', reassort: "Enregistrer l'entrée", perte: 'Enregistrer la perte' };
+  typeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      typeBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeType = btn.dataset.type;
+      submitBtn.textContent = verbByType[activeType];
+      updateStockHint();
+    });
+  });
+
+  const articleSelect = document.getElementById('moveArticle');
+  const qtyInput = document.getElementById('moveQty');
+  function updateStockHint() {
+    const a = articles[articleSelect.value];
+    if (!a) return;
+    const hint = document.getElementById('stockHint');
+    if (activeType === 'vente' || activeType === 'perte') {
+      hint.innerHTML = `Stock actuel : <strong>${a.qty ?? 0}</strong> — après : <strong>${Math.max(0, (a.qty ?? 0) - (parseInt(qtyInput.value) || 0))}</strong>`;
+    } else {
+      hint.innerHTML = `Stock actuel : <strong>${a.qty ?? 0}</strong> — après : <strong>${(a.qty ?? 0) + (parseInt(qtyInput.value) || 0)}</strong>`;
+    }
+  }
+  articleSelect.addEventListener('change', updateStockHint);
+  qtyInput.addEventListener('input', updateStockHint);
+  document.getElementById('qtyMinus').addEventListener('click', () => { qtyInput.value = Math.max(1, (parseInt(qtyInput.value) || 1) - 1); updateStockHint(); });
+  document.getElementById('qtyPlus').addEventListener('click', () => { qtyInput.value = (parseInt(qtyInput.value) || 1) + 1; updateStockHint(); });
+  updateStockHint();
+
+  document.getElementById('moveForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const articleId = articleSelect.value;
+    const qty = parseInt(qtyInput.value) || 0;
+    if (!articleId || qty <= 0) return;
+    const a = articles[articleId];
+    if ((activeType === 'vente' || activeType === 'perte') && qty > (a.qty ?? 0)) {
+      toast('Quantité supérieure au stock disponible.');
+      return;
+    }
+    submitBtn.disabled = true;
+    try {
+      await recordMovement(articleId, activeType, qty);
+      backdrop.remove();
+      toast('Mouvement enregistré.');
+    } catch (err) {
+      console.error(err);
+      toast("Erreur lors de l'enregistrement.");
+      submitBtn.disabled = false;
+    }
+  });
+}
+document.getElementById('fabMove').addEventListener('click', () => openMoveSheet(null));
+
+// ---------------------------------------------------------------------------
+// Article create/edit sheet
+// ---------------------------------------------------------------------------
+function openArticleSheet(id) {
+  const existing = id ? articles[id] : null;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-head"><h2>${existing ? 'Modifier l’article' : 'Nouvel article'}</h2><button class="sheet-close" id="closeArtSheet">✕</button></div>
+      <form id="articleForm">
+        <div class="field"><label for="artName">Nom</label><input id="artName" required value="${existing ? escapeHtml(existing.name) : ''}" placeholder="Ex : Écouteurs Bluetooth XR200"></div>
+        <div class="field"><label for="artCategory">Catégorie</label><input id="artCategory" value="${existing ? escapeHtml(existing.category || '') : ''}" placeholder="Ex : Écouteurs"></div>
+        <div class="field"><label for="artQty">Quantité en stock</label><input id="artQty" type="number" min="0" inputmode="numeric" value="${existing ? (existing.qty ?? 0) : 0}"></div>
+        <div class="field"><label for="artBuy">Prix d'achat (FCFA)</label><input id="artBuy" type="number" min="0" inputmode="numeric" value="${existing ? (existing.buy_price ?? '') : ''}"></div>
+        <div class="field"><label for="artSell">Prix de vente (FCFA)</label><input id="artSell" type="number" min="0" inputmode="numeric" value="${existing ? (existing.sell_price ?? '') : ''}"></div>
+        <div class="field"><label for="artThreshold">Seuil d'alerte stock bas</label><input id="artThreshold" type="number" min="0" inputmode="numeric" value="${existing ? (existing.threshold ?? 3) : 3}"></div>
+        <button type="submit" class="btn btn-primary btn-block">${existing ? 'Enregistrer' : 'Ajouter l’article'}</button>
+        ${existing ? '<button type="button" class="btn btn-ghost btn-block" id="deleteArtBtn">Supprimer l’article</button>' : ''}
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+  document.getElementById('closeArtSheet').addEventListener('click', () => backdrop.remove());
+
+  document.getElementById('articleForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById('artName').value.trim(),
+      category: document.getElementById('artCategory').value.trim(),
+      qty: parseInt(document.getElementById('artQty').value) || 0,
+      buy_price: parseFloat(document.getElementById('artBuy').value) || 0,
+      sell_price: parseFloat(document.getElementById('artSell').value) || 0,
+      threshold: parseInt(document.getElementById('artThreshold').value) || 0,
+    };
+    if (!payload.name) return;
+    try {
+      if (existing) {
+        const { error } = await supa.from('articles').update(payload).eq('id', id);
+        if (error) throw error;
+      } else {
+        const { error } = await supa.from('articles').insert(payload);
+        if (error) throw error;
+      }
+      backdrop.remove();
+      toast('Article enregistré.');
+    } catch (err) {
+      console.error(err);
+      toast("Erreur lors de l'enregistrement.");
+    }
+  });
+
+  if (existing) {
+    document.getElementById('deleteArtBtn').addEventListener('click', async () => {
+      try {
+        const { error } = await supa.from('articles').delete().eq('id', id);
+        if (error) throw error;
+        backdrop.remove();
+        toast('Article supprimé.');
+      } catch (err) {
+        console.error(err);
+        toast('Erreur lors de la suppression.');
+      }
+    });
+  }
+}
+document.getElementById('addArticleBtn').addEventListener('click', () => openArticleSheet(null));
+
+// ---------------------------------------------------------------------------
+// Filters wiring
+// ---------------------------------------------------------------------------
+document.getElementById('searchInput').addEventListener('input', renderArticleList);
+document.getElementById('categoryFilter').addEventListener('change', renderArticleList);
+document.getElementById('historyFilter').addEventListener('change', renderHistory);
+
+// ---------------------------------------------------------------------------
+// Data layer: Supabase
+// ---------------------------------------------------------------------------
+async function recordMovement(articleId, type, qty) {
+  const a = articles[articleId];
+  const delta = type === 'reassort' ? qty : -qty;
+  const newQty = Math.max(0, (a.qty ?? 0) + delta);
+
+  const { error: updErr } = await supa.from('articles').update({ qty: newQty }).eq('id', articleId);
+  if (updErr) throw updErr;
+
+  const { error: movErr } = await supa.from('movements').insert({
+    article_id: articleId,
+    type,
+    qty,
+    by_name: localStorage.getItem('stock_username') || 'Boutique',
+  });
+  if (movErr) throw movErr;
+}
+
+async function loadArticles() {
+  const { data, error } = await supa.from('articles').select('*').order('name');
+  if (error) { console.error(error); return; }
+  articles = {};
+  (data || []).forEach(row => {
+    articles[row.id] = {
+      name: row.name, category: row.category, qty: row.qty,
+      buy_price: row.buy_price, sell_price: row.sell_price, threshold: row.threshold,
+    };
+  });
+  renderAll();
+}
+
+async function loadMovements() {
+  const { data, error } = await supa.from('movements').select('*').order('at', { ascending: false }).limit(200);
+  if (error) { console.error(error); return; }
+  movements = data || [];
+  renderAll();
+}
+
+function start() {
+  // Demande un petit pseudo une seule fois, pour savoir "qui" fait un mouvement
+  if (!localStorage.getItem('stock_username')) {
+    const name = prompt("Votre prénom (pour la traçabilité des mouvements) :", "");
+    if (name) localStorage.setItem('stock_username', name.trim());
+  }
+
+  loadArticles();
+  loadMovements();
+
+  // Abonnements temps réel : toute modification faite par n'importe qui
+  // (vous ou le vendeur) rafraîchit automatiquement la page de l'autre.
+  supa.channel('public:articles')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'articles' }, loadArticles)
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        document.getElementById('whoDot').classList.remove('off');
+        document.getElementById('whoLabel').textContent = 'En ligne';
+      }
+    });
+  supa.channel('public:movements')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'movements' }, loadMovements)
+    .subscribe();
+}
+
+start();
+</script>
+</body>
+</html>
