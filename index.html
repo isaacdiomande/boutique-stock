@@ -68,7 +68,7 @@ img { max-width: 100%; }
 }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px 14px; }
 .brand h1 { font-size: 1.3rem; }
-.who { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--ink-dim); }
+.who { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-dim); flex-wrap: wrap; justify-content: flex-end; }
 .who .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); flex: none; }
 .who .dot.off { background: var(--bad); }
 
@@ -181,6 +181,7 @@ form { display: flex; flex-direction: column; gap: 14px; }
     <div class="who" id="whoBox">
       <span class="dot off" id="whoDot"></span>
       <span id="whoLabel">Connexion…</span>
+      <button class="logout-link-top" id="changePasswordBtn" hidden>Mot de passe</button>
       <button class="logout-link-top" id="logoutBtn" hidden>Se déconnecter</button>
     </div>
   </div>
@@ -677,6 +678,65 @@ async function loadMovements() {
 }
 
 // ---------------------------------------------------------------------------
+// Changement de mot de passe
+// ---------------------------------------------------------------------------
+function openPasswordSheet() {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-head"><h2>Changer mon mot de passe</h2><button class="sheet-close" id="closePwdSheet">✕</button></div>
+      <form id="pwdForm">
+        <div class="field">
+          <label for="pwdNew">Nouveau mot de passe</label>
+          <input id="pwdNew" type="password" required minlength="6" autocomplete="new-password">
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label for="pwdConfirm">Confirmer le mot de passe</label>
+          <input id="pwdConfirm" type="password" required minlength="6" autocomplete="new-password">
+        </div>
+        <p class="login-error" id="pwdError"></p>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:14px" id="pwdSubmitBtn">Enregistrer</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+  document.getElementById('closePwdSheet').addEventListener('click', () => backdrop.remove());
+
+  document.getElementById('pwdForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pwd = document.getElementById('pwdNew').value;
+    const confirm = document.getElementById('pwdConfirm').value;
+    const errEl = document.getElementById('pwdError');
+    const btn = document.getElementById('pwdSubmitBtn');
+    errEl.textContent = '';
+    if (pwd !== confirm) {
+      errEl.textContent = 'Les deux mots de passe ne correspondent pas.';
+      return;
+    }
+    if (pwd.length < 6) {
+      errEl.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const { error } = await supa.auth.updateUser({ password: pwd });
+      if (error) throw error;
+      toast('Mot de passe mis à jour.');
+      backdrop.remove();
+    } catch (err) {
+      console.error(err);
+      errEl.textContent = "Échec de la mise à jour. Réessayez.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+document.getElementById('changePasswordBtn').addEventListener('click', openPasswordSheet);
+
+// ---------------------------------------------------------------------------
 // Authentification
 // ---------------------------------------------------------------------------
 function showLogin() {
@@ -686,6 +746,7 @@ function showLogin() {
   document.getElementById('whoLabel').textContent = 'Non connecté';
   document.getElementById('whoDot').classList.add('off');
   document.getElementById('logoutBtn').hidden = true;
+  document.getElementById('changePasswordBtn').hidden = true;
   document.querySelector('.app-fixed-top nav.tabs').hidden = true;
   document.getElementById('fixedPanel-stock').hidden = true;
   document.getElementById('fixedPanel-historique').hidden = true;
@@ -697,6 +758,7 @@ function showApp() {
   document.getElementById('loginScreen').hidden = true;
   document.getElementById('app').hidden = false;
   document.getElementById('logoutBtn').hidden = false;
+  document.getElementById('changePasswordBtn').hidden = false;
   document.querySelector('.app-fixed-top nav.tabs').hidden = false;
   ['stock', 'historique', 'articles'].forEach(t => {
     document.getElementById('fixedPanel-' + t).hidden = (t !== currentTab);
