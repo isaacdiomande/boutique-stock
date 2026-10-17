@@ -165,6 +165,16 @@ form { display: flex; flex-direction: column; gap: 14px; }
 .role-badge.gerant { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent); }
 .role-badge.vendeur { background: var(--good-bg); color: var(--good); }
 
+.import-preview { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px; }
+.import-row { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+.import-row:last-child { border-bottom: none; }
+.import-row .iname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-row .ibadge { flex: none; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; padding: 2px 7px; border-radius: 999px; }
+.import-row .ibadge.new { background: var(--good-bg); color: var(--good); }
+.import-row .ibadge.update { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); }
+.import-row .ibadge.skip { background: var(--bad-bg); color: var(--bad); }
+.import-summary { font-size: 0.82rem; color: var(--ink-dim); }
+
 .login-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding-block: 24px; }
 .login-card { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 14px; }
 .login-card h1 { font-size: 1.5rem; text-align: center; }
@@ -213,7 +223,9 @@ form { display: flex; flex-direction: column; gap: 14px; }
 
   <div class="fixed-tab-panel" id="fixedPanel-articles" hidden>
     <button class="btn btn-ghost btn-block" id="addArticleBtn">+ Ajouter un article</button>
+    <button class="btn btn-ghost btn-block" id="importExcelBtn">⬆ Importer depuis Excel</button>
     <button class="btn btn-ghost btn-block" id="exportExcelBtn">⬇ Exporter en Excel</button>
+    <input type="file" id="importExcelInput" accept=".xlsx,.xls" hidden>
   </div>
 </div>
 
@@ -685,6 +697,127 @@ document.getElementById('exportExcelBtn').addEventListener('click', () => {
   } catch (err) {
     console.error(err);
     toast("Échec de l'export. Réessayez.");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Import Excel
+// ---------------------------------------------------------------------------
+// Colonnes attendues dans le fichier (insensible à la casse, variantes tolérées) :
+// Nom / Article, Catégorie, Quantité, Prix d'achat, Prix de vente, Seuil alerte
+function pickCol(row, candidates) {
+  const keys = Object.keys(row);
+  for (const cand of candidates) {
+    const found = keys.find(k => k.trim().toLowerCase() === cand);
+    if (found !== undefined) return row[found];
+  }
+  return undefined;
+}
+function toNum(v, fallback) {
+  const n = parseFloat(v);
+  return isNaN(n) ? fallback : n;
+}
+function parseImportRows(rawRows) {
+  return rawRows.map(row => {
+    const name = String(pickCol(row, ['nom', 'article', 'nom de l\'article']) ?? '').trim();
+    return {
+      name,
+      category: String(pickCol(row, ['catégorie', 'categorie']) ?? '').trim(),
+      qty: toNum(pickCol(row, ['quantité', 'quantite', 'quantité en stock', 'qty']), 0),
+      buy_price: toNum(pickCol(row, ['prix d\'achat', 'prix d\'achat (fcfa)', 'prix achat']), 0),
+      sell_price: toNum(pickCol(row, ['prix de vente', 'prix de vente (fcfa)', 'prix vente']), 0),
+      threshold: toNum(pickCol(row, ['seuil alerte', 'seuil', 'seuil d\'alerte stock bas']), 3),
+    };
+  }).filter(r => r.name);
+}
+
+function openImportSheet(parsedRows) {
+  const byNameLower = {};
+  Object.entries(articles).forEach(([id, a]) => { byNameLower[a.name.trim().toLowerCase()] = id; });
+
+  const plan = parsedRows.map(r => {
+    const existingId = byNameLower[r.name.toLowerCase()];
+    return { ...r, existingId, action: existingId ? 'update' : 'new' };
+  });
+
+  const newCount = plan.filter(p => p.action === 'new').length;
+  const updateCount = plan.filter(p => p.action === 'update').length;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-head"><h2>Importer ${plan.length} article(s)</h2><button class="sheet-close" id="closeImportSheet">✕</button></div>
+      <div class="import-summary">${newCount} nouveau(x), ${updateCount} à mettre à jour (quantité, prix et seuil remplacés ; un réassort sera enregistré).</div>
+      <div class="import-preview">
+        ${plan.map(p => `
+          <div class="import-row">
+            <span class="iname">${escapeHtml(p.name)}</span>
+            <span class="ibadge ${p.action}">${p.action === 'new' ? 'Nouveau' : 'Maj'}</span>
+          </div>
+        `).join('')}
+      </div>
+      <button type="button" class="btn btn-primary btn-block" id="confirmImportBtn">Confirmer l'import</button>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+  document.getElementById('closeImportSheet').addEventListener('click', () => backdrop.remove());
+
+  document.getElementById('confirmImportBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('confirmImportBtn');
+    btn.disabled = true;
+    btn.textContent = 'Import en cours…';
+    let okCount = 0, failCount = 0;
+    for (const p of plan) {
+      try {
+        if (p.action === 'update') {
+          const { error } = await supa.from('articles').update({
+            category: p.category, qty: p.qty, buy_price: p.buy_price,
+            sell_price: p.sell_price, threshold: p.threshold,
+          }).eq('id', p.existingId);
+          if (error) throw error;
+          if (p.qty > 0) await recordMovement(p.existingId, 'reassort', p.qty);
+        } else {
+          const { data, error } = await supa.from('articles').insert({
+            name: p.name, category: p.category, qty: p.qty,
+            buy_price: p.buy_price, sell_price: p.sell_price, threshold: p.threshold,
+          }).select('id').single();
+          if (error) throw error;
+          if (p.qty > 0 && data?.id) await recordMovement(data.id, 'reassort', p.qty);
+        }
+        okCount++;
+      } catch (err) {
+        console.error(err);
+        failCount++;
+      }
+    }
+    backdrop.remove();
+    toast(failCount === 0 ? `${okCount} article(s) importé(s).` : `${okCount} importé(s), ${failCount} échec(s).`);
+  });
+}
+
+document.getElementById('importExcelBtn').addEventListener('click', () => {
+  document.getElementById('importExcelInput').click();
+});
+document.getElementById('importExcelInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheetName = wb.SheetNames[0];
+    const rawRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
+    const parsed = parseImportRows(rawRows);
+    if (parsed.length === 0) {
+      toast("Aucune ligne valide trouvée (vérifiez les colonnes : Nom, Catégorie, Quantité, Prix d'achat, Prix de vente, Seuil alerte).");
+      return;
+    }
+    openImportSheet(parsed);
+  } catch (err) {
+    console.error(err);
+    toast("Impossible de lire ce fichier. Vérifiez qu'il s'agit bien d'un fichier Excel.");
   }
 });
 
