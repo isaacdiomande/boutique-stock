@@ -213,6 +213,7 @@ form { display: flex; flex-direction: column; gap: 14px; }
 
   <div class="fixed-tab-panel" id="fixedPanel-articles" hidden>
     <button class="btn btn-ghost btn-block" id="addArticleBtn">+ Ajouter un article</button>
+    <button class="btn btn-ghost btn-block" id="exportExcelBtn">⬇ Exporter en Excel</button>
   </div>
 </div>
 
@@ -250,6 +251,8 @@ form { display: flex; flex-direction: column; gap: 14px; }
 <script src="config.js"></script>
 <!-- SDK Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<!-- Export Excel -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 // ============================================================================
 // Connexion Supabase
@@ -635,6 +638,55 @@ function openArticleSheet(id) {
   }
 }
 document.getElementById('addArticleBtn').addEventListener('click', () => openArticleSheet(null));
+
+// ---------------------------------------------------------------------------
+// Export Excel
+// ---------------------------------------------------------------------------
+function buildWorkbook() {
+  const kindWord = { vente: 'Vente', reassort: 'Réassort', perte: 'Casse/Perte' };
+
+  const articleRows = Object.values(articles)
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+    .map(a => ({
+      'Article': a.name,
+      'Catégorie': a.category || '',
+      'Quantité en stock': a.qty ?? 0,
+      'Prix d\'achat (FCFA)': a.buy_price ?? 0,
+      'Prix de vente (FCFA)': a.sell_price ?? 0,
+      'Seuil alerte': a.threshold ?? 0,
+      'Valeur du stock (FCFA)': (a.qty ?? 0) * (a.buy_price ?? 0),
+    }));
+
+  const movementRows = movements
+    .slice()
+    .sort((a, b) => new Date(b.at) - new Date(a.at))
+    .map(m => {
+      const art = articles[m.article_id];
+      return {
+        'Date': m.at ? new Date(m.at).toLocaleString('fr-FR') : '',
+        'Article': art ? art.name : '(article supprimé)',
+        'Type': kindWord[m.type] || m.type,
+        'Quantité': m.qty,
+        'Par': m.by_name || 'inconnu',
+      };
+    });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(articleRows), 'Articles');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(movementRows), 'Mouvements');
+  return wb;
+}
+
+document.getElementById('exportExcelBtn').addEventListener('click', () => {
+  try {
+    const wb = buildWorkbook();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `boutique-stock-${dateStr}.xlsx`);
+  } catch (err) {
+    console.error(err);
+    toast("Échec de l'export. Réessayez.");
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Filters wiring
