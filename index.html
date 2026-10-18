@@ -184,6 +184,15 @@ form { display: flex; flex-direction: column; gap: 14px; }
 .import-row .ibadge.skip { background: var(--bad-bg); color: var(--bad); }
 .import-summary { font-size: 0.82rem; color: var(--ink-dim); }
 
+.status-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.status-row:empty { display: none; }
+.status-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; font-weight: 600; padding: 4px 9px; border-radius: 999px; margin-bottom: 8px; }
+.offline-pill { background: var(--bad-bg); color: var(--bad); }
+.offline-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bad); }
+.pending-pill { background: var(--warn-bg); color: var(--warn); }
+.history-row.pending { opacity: 0.75; border-style: dashed; }
+.history-row .pending-tag { flex: none; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--warn); background: var(--warn-bg); padding: 2px 6px; border-radius: 999px; }
+
 .login-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding-block: 24px; }
 .login-card { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 14px; }
 .login-card h1 { font-size: 1.5rem; text-align: center; }
@@ -203,6 +212,13 @@ form { display: flex; flex-direction: column; gap: 14px; }
       <button class="logout-link-top" id="changePasswordBtn" hidden>Mot de passe</button>
       <button class="logout-link-top" id="logoutBtn" hidden>Se déconnecter</button>
     </div>
+  </div>
+  <div class="status-row">
+    <span class="status-pill offline-pill" id="offlineStatus" hidden>
+      <span class="dot off" id="offlineDot"></span>
+      <span id="offlineLabel">Hors-ligne</span>
+    </span>
+    <span class="status-pill pending-pill" id="pendingBadge" hidden></span>
   </div>
   <nav class="tabs">
     <button class="tab-btn active" data-tab="stock">Stock</button>
@@ -280,6 +296,62 @@ form { display: flex; flex-direction: column; gap: 14px; }
 // ============================================================================
 const supa = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
+// ============================================================================
+// File d'attente hors-ligne (IndexedDB)
+// ----------------------------------------------------------------------------
+// Les ventes et pertes enregistrées sans réseau sont stockées ici le temps
+// que la connexion revienne. Le réassort reste réservé au gérant et nécessite
+// une connexion (moins urgent, et évite de complexifier la logique de reprise).
+// ============================================================================
+const OFFLINE_DB_NAME = 'boutique-stock-offline';
+const OFFLINE_STORE = 'pending_movements';
+let offlineDb = null;
+
+function openOfflineDb() {
+  return new Promise((resolve, reject) => {
+    if (offlineDb) { resolve(offlineDb); return; }
+    const req = indexedDB.open(OFFLINE_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(OFFLINE_STORE)) {
+        db.createObjectStore(OFFLINE_STORE, { keyPath: 'localId' });
+      }
+    };
+    req.onsuccess = () => { offlineDb = req.result; resolve(offlineDb); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function addPendingMovement(entry) {
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+    tx.objectStore(OFFLINE_STORE).add(entry);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function getPendingMovements() {
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_STORE, 'readonly');
+    const req = tx.objectStore(OFFLINE_STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function removePendingMovement(localId) {
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_STORE, 'readwrite');
+    tx.objectStore(OFFLINE_STORE).delete(localId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 function timeAgo(ts) {
   if (!ts) return '';
   const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -302,6 +374,8 @@ let currentTab = 'stock';
 let currentProfile = null; // {role, display_name, email}
 let articlesChannel = null;
 let movementsChannel = null;
+let pendingCount = 0; // nombre de mouvements en attente de synchronisation (hors-ligne)
+let syncInProgress = false;
 
 function isGerant() {
   return currentProfile && currentProfile.role === 'gerant';
@@ -423,12 +497,13 @@ function renderHistory() {
     const cls = m.type === 'reassort' ? 'pos' : 'neg';
     const when = m.at ? timeAgo(new Date(m.at).getTime()) : '';
     return `
-      <div class="history-row">
+      <div class="history-row ${m.pending ? 'pending' : ''}">
         <div class="kind ${m.type}">${kindLabel[m.type] || '?'}</div>
         <div class="info">
           <div class="line1">${escapeHtml(name)}</div>
           <div class="line2">${kindWord[m.type] || m.type} · ${escapeHtml(m.by_name || 'inconnu')} · ${when}</div>
         </div>
+        ${m.pending ? '<span class="pending-tag">En attente</span>' : ''}
         <div class="amount ${cls}">${sign}${m.qty}</div>
       </div>
     `;
@@ -575,9 +650,16 @@ function openMoveSheet(preselectId) {
     }
     submitBtn.disabled = true;
     try {
-      await recordMovement(articleId, activeType, qty);
+      // Réassort : toujours en ligne (réservé au gérant, moins urgent à enregistrer immédiatement).
+      // Vente / Perte : tolère l'absence de réseau, mise en file d'attente locale.
+      if (activeType === 'reassort') {
+        await recordMovement(articleId, activeType, qty);
+        toast('Mouvement enregistré.');
+      } else {
+        const wentOffline = await recordMovementTolerant(articleId, activeType, qty);
+        toast(wentOffline ? 'Hors-ligne : vente enregistrée, en attente de synchronisation.' : 'Mouvement enregistré.');
+      }
       backdrop.remove();
-      toast('Mouvement enregistré.');
     } catch (err) {
       console.error(err);
       toast("Erreur lors de l'enregistrement.");
@@ -851,6 +933,110 @@ async function recordMovement(articleId, type, qty) {
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------------
+// Vente / Perte tolérantes au hors-ligne
+// ---------------------------------------------------------------------------
+// Tente l'enregistrement en direct ; si le réseau est indisponible (ou l'appel
+// échoue pour une raison réseau), le mouvement est mis en file d'attente locale
+// et appliqué à l'affichage de façon optimiste (le stock réel sera recalé dès
+// la synchronisation). Retourne true si le mouvement est parti en hors-ligne.
+async function recordMovementTolerant(articleId, type, qty) {
+  if (navigator.onLine) {
+    try {
+      await recordMovement(articleId, type, qty);
+      return false;
+    } catch (err) {
+      // Si l'erreur ne ressemble pas à un problème réseau (ex: refusé par le serveur), on la relance.
+      if (!isLikelyNetworkError(err)) throw err;
+    }
+  }
+  await queueOfflineMovement(articleId, type, qty);
+  return true;
+}
+
+function isLikelyNetworkError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  return !navigator.onLine || msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch');
+}
+
+async function queueOfflineMovement(articleId, type, qty) {
+  const entry = {
+    localId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    article_id: articleId,
+    type,
+    qty,
+    by_name: currentProfile?.display_name || currentProfile?.email || 'inconnu',
+    created_at: new Date().toISOString(),
+  };
+  await addPendingMovement(entry);
+
+  // Mise à jour optimiste de l'affichage local (stock + liste des mouvements),
+  // sans attendre la synchronisation.
+  const a = articles[articleId];
+  if (a) {
+    a.qty = (a.qty ?? 0) - qty; // vente/perte retirent toujours du stock
+  }
+  movements.unshift({
+    id: 'pending-' + entry.localId,
+    article_id: articleId,
+    type,
+    qty,
+    by_name: entry.by_name,
+    at: entry.created_at,
+    pending: true,
+  });
+  updatePendingBadge();
+  renderAll();
+}
+
+async function syncPendingMovements() {
+  if (syncInProgress || !navigator.onLine) return;
+  syncInProgress = true;
+  try {
+    const pending = await getPendingMovements();
+    if (pending.length === 0) { updatePendingBadge(); return; }
+    pending.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    for (const entry of pending) {
+      try {
+        await recordMovement(entry.article_id, entry.type, entry.qty);
+        await removePendingMovement(entry.localId);
+      } catch (err) {
+        console.error('Échec synchronisation mouvement en attente:', err);
+        // On s'arrête ici : on réessaiera au prochain déclenchement (reconnexion suivante),
+        // pour garder l'ordre des mouvements.
+        break;
+      }
+    }
+    // Recharge l'état réel depuis le serveur (corrige toute estimation optimiste,
+    // y compris un stock négatif resté affiché le temps de la synchro).
+    await loadArticles();
+    await loadMovements();
+  } finally {
+    syncInProgress = false;
+    updatePendingBadge();
+  }
+}
+
+function updatePendingBadge() {
+  getPendingMovements().then((pending) => {
+    pendingCount = pending.length;
+    const el = document.getElementById('pendingBadge');
+    if (el) {
+      el.hidden = pendingCount === 0;
+      el.textContent = pendingCount === 1 ? '1 en attente' : `${pendingCount} en attente`;
+    }
+  }).catch(() => {});
+}
+
+function updateOnlineStatus() {
+  const pill = document.getElementById('offlineStatus');
+  if (!pill) return;
+  pill.hidden = navigator.onLine;
+}
+
+window.addEventListener('online', () => { updateOnlineStatus(); syncPendingMovements(); });
+window.addEventListener('offline', () => { updateOnlineStatus(); });
+
 async function loadArticles() {
   const { data, error } = await supa.from('articles').select('*').order('name');
   if (error) { console.error(error); return; }
@@ -861,6 +1047,7 @@ async function loadArticles() {
       buy_price: row.buy_price, sell_price: row.sell_price, threshold: row.threshold,
     };
   });
+  await reapplyPendingMovements();
   renderAll();
 }
 
@@ -868,7 +1055,39 @@ async function loadMovements() {
   const { data, error } = await supa.from('movements').select('*').order('at', { ascending: false }).limit(200);
   if (error) { console.error(error); return; }
   movements = data || [];
+  await reapplyPendingMovements();
   renderAll();
+}
+
+// Réapplique par-dessus l'état serveur les mouvements encore en file d'attente
+// locale (pas encore synchronisés), pour que l'affichage reste cohérent même
+// si un chargement serveur intervient pendant que l'app est hors-ligne.
+async function reapplyPendingMovements() {
+  let pending = [];
+  try {
+    pending = await getPendingMovements();
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+  if (pending.length === 0) return;
+  pending.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  for (const entry of pending) {
+    const a = articles[entry.article_id];
+    if (a) a.qty = (a.qty ?? 0) - entry.qty;
+    const alreadyShown = movements.some((m) => m.id === 'pending-' + entry.localId);
+    if (!alreadyShown) {
+      movements.unshift({
+        id: 'pending-' + entry.localId,
+        article_id: entry.article_id,
+        type: entry.type,
+        qty: entry.qty,
+        by_name: entry.by_name,
+        at: entry.created_at,
+        pending: true,
+      });
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -945,6 +1164,8 @@ function showLogin() {
   document.getElementById('fixedPanel-stock').hidden = true;
   document.getElementById('fixedPanel-historique').hidden = true;
   document.getElementById('fixedPanel-articles').hidden = true;
+  document.getElementById('offlineStatus').hidden = true;
+  document.getElementById('pendingBadge').hidden = true;
   document.getElementById('fixedTop').hidden = false;
 }
 
@@ -977,6 +1198,9 @@ async function loadProfileAndEnter(userId) {
   subscribeRealtime();
   loadArticles();
   loadMovements();
+  updateOnlineStatus();
+  updatePendingBadge();
+  syncPendingMovements();
 }
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
